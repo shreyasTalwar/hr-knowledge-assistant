@@ -10,8 +10,8 @@ PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 
 pc = None
 index = None
-EMBEDDING_MODEL = "multilingual-e5-large"
-EXPECTED_DIMENSION = 1024
+EMBEDDING_MODEL = "bge-small-en-v1.5"
+EXPECTED_DIMENSION = 384
 
 if not PINECONE_API_KEY or not PINECONE_INDEX_NAME:
     print("Warning: PINECONE_API_KEY or PINECONE_INDEX_NAME environment variables are missing. Vector indexing will be disabled.")
@@ -37,6 +37,7 @@ else:
         print(f"Failed to initialize Pinecone Index connection: {e}")
         pc = None
         index = None
+
 
 def get_embedding(text, input_type="passage"):
     """
