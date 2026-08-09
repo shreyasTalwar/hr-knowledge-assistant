@@ -508,6 +508,7 @@ function AdminDashboard() {
                   type="file"
                   accept=".pdf,application/pdf"
                   className="hidden"
+                  onClick={(event) => event.stopPropagation()}
                   onChange={handleFileChange}
                 />
 
@@ -531,7 +532,20 @@ function AdminDashboard() {
                 <Badge variant="secondary" className="mt-4 text-[10px]">
                   PDF only · Maximum 10 MB
                 </Badge>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-4 z-10"
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    fileInputRef.current?.click()
+                  }}
+                >
+                  Choose PDF
+                </Button>
               </div>
+
 
               {uploadProgress !== null && (
                 <div className="mt-5 rounded-xl border bg-muted/30 p-4">
