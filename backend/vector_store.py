@@ -6,11 +6,16 @@ from fastembed import TextEmbedding
 # Ensure environment variables are loaded
 load_dotenv()
 
-# Initialize FastEmbed ONNX model (uses much less RAM than sentence-transformers/torch)
-print("Loading FastEmbed model (BAAI/bge-small-en-v1.5)...")
-model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
-print("Model loaded successfully.")
+from functools import lru_cache
 
+# Initialize FastEmbed ONNX model using lazy-loading singleton pattern
+@lru_cache(maxsize=1)
+def get_model():
+    print("Loading FastEmbed model (BAAI/bge-small-en-v1.5)...")
+    return TextEmbedding(
+        model_name="BAAI/bge-small-en-v1.5",
+        providers=["CPUExecutionProvider"]
+    )
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
@@ -33,9 +38,10 @@ def get_embedding(text):
     """
     Generate 384-dimensional vector embedding for a given string text.
     """
-    # model.embed returns a generator of numpy arrays. We convert the first item to list.
+    model = get_model()
     embeddings = list(model.embed([text]))
     return embeddings[0].tolist()
+
 
 
 def index_document_chunks(chunks):
