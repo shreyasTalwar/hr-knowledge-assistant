@@ -10,44 +10,45 @@ PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 
 pc = None
 index = None
-EMBEDDING_MODEL = None
-INDEX_DIMENSION = None
+EMBEDDING_MODEL = "multilingual-e5-large"
+EXPECTED_DIMENSION = 1024
 
-if PINECONE_API_KEY and PINECONE_INDEX_NAME:
+if not PINECONE_API_KEY or not PINECONE_INDEX_NAME:
+    print("Warning: PINECONE_API_KEY or PINECONE_INDEX_NAME environment variables are missing. Vector indexing will be disabled.")
+else:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
         
         desc = pc.describe_index(name=PINECONE_INDEX_NAME)
-        INDEX_DIMENSION = int(desc.dimension)
+        actual_dimension = int(desc.dimension)
         
-        if INDEX_DIMENSION == 1024:
-            EMBEDDING_MODEL = "multilingual-e5-large"
-        elif INDEX_DIMENSION == 384:
-            EMBEDDING_MODEL = "bge-small-en-v1.5"
-        else:
-            raise RuntimeError(f"Unsupported Pinecone index dimension: {INDEX_DIMENSION}")
+        if actual_dimension != EXPECTED_DIMENSION:
+            raise RuntimeError(
+                f"Index dimension is {actual_dimension}, but "
+                f"{EMBEDDING_MODEL} is configured for {EXPECTED_DIMENSION}. "
+                "Please match index dimension or reconfigure model."
+            )
 
         index = pc.Index(PINECONE_INDEX_NAME)
         print(f"Connected to Pinecone Index: {PINECONE_INDEX_NAME}")
-        print(f"Index Dimension: {INDEX_DIMENSION}")
+        print(f"Index Dimension: {actual_dimension}")
         print(f"Embedding Model: {EMBEDDING_MODEL}")
     except Exception as e:
         print(f"Failed to initialize Pinecone Index connection: {e}")
         pc = None
         index = None
-else:
-    print("Warning: PINECONE_API_KEY or PINECONE_INDEX_NAME environment variables are missing. Vector indexing will be disabled.")
 
 def get_embedding(text, input_type="passage"):
     """
     Generate vector embedding using Pinecone's Inference API.
     Handles 'passage' or 'query' format parameters.
     """
-    if pc is None or EMBEDDING_MODEL is None:
-        raise RuntimeError("Pinecone embedding service is not initialized.")
+    if pc is None:
+        raise RuntimeError("Pinecone client is not initialized.")
     
     if input_type not in {"passage", "query"}:
         raise ValueError("input_type must be either 'passage' or 'query'")
+
 
     
     try:
@@ -60,14 +61,15 @@ def get_embedding(text, input_type="passage"):
             }
         )
         values = list(res[0].values)
-        if len(values) != INDEX_DIMENSION:
+        if len(values) != EXPECTED_DIMENSION:
             raise ValueError(
-                f"Embedding dimension mismatch: expected {INDEX_DIMENSION}, got {len(values)} using {EMBEDDING_MODEL}"
+                f"Embedding dimension mismatch: expected {EXPECTED_DIMENSION}, got {len(values)} using {EMBEDDING_MODEL}"
             )
         return values
     except Exception as e:
         print(f"Pinecone embedding generation failed using {EMBEDDING_MODEL}: {e}")
         raise e
+
 
 
 import hashlib
