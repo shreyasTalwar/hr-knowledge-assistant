@@ -127,8 +127,9 @@ def delete_document_vectors(filename):
     Deletes all vector embeddings associated with a specific file.
     Gracefully catches and ignores 404 Namespace Not Found errors (which occur when index is empty).
     """
-    if not index:
+    if index is None:
         return
+
         
     try:
         print(f"Deleting vectors associated with source: {filename} from Pinecone...")
