@@ -695,7 +695,7 @@ function AdminDashboard() {
                           </TableCell>
 
                           <TableCell>
-                            <DocumentStatus status={document.status} />
+                            <DocumentStatus status={document.status || document.Status || "processing"} />
                           </TableCell>
 
                           <TableCell className="text-right">
