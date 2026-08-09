@@ -1,9 +1,8 @@
 import os
 import jwt
-
 import requests
 from functools import wraps
-from flask import request, jsonify
+from flask import request, jsonify, g
 from jwt.algorithms import RSAAlgorithm
 
 CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
@@ -11,26 +10,44 @@ CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
 # Cache public keys to prevent hitting Clerk servers on every single API call
 jwks_cache = None
 
+def fetch_jwks():
+    if not CLERK_JWKS_URL:
+        raise ValueError("CLERK_JWKS_URL environment variable is missing")
+    response = requests.get(CLERK_JWKS_URL, timeout=5)
+    response.raise_for_status()
+    return response.json()
+
 def get_public_key(kid):
     global jwks_cache
+
     if not CLERK_JWKS_URL:
         raise ValueError("CLERK_JWKS_URL environment variable is missing")
 
-    if not jwks_cache:
+    if jwks_cache is None:
         try:
-            response = requests.get(CLERK_JWKS_URL)
-            response.raise_for_status()
-            jwks_cache = response.json()
+            jwks_cache = fetch_jwks()
         except Exception as e:
             print(f"Error fetching JWKS from Clerk: {e}")
             return None
 
-    # Find the matching key in JWKS
-    for key_data in jwks_cache.get("keys", []):
-        if key_data.get("kid") == kid:
-            return RSAAlgorithm.from_jwk(key_data)
-    
-    return None
+    matching_key = next(
+        (key for key in jwks_cache.get("keys", []) if key.get("kid") == kid),
+        None
+    )
+
+    # Refresh once in case Clerk rotated its signing key
+    if matching_key is None:
+        try:
+            jwks_cache = fetch_jwks()
+            matching_key = next(
+                (key for key in jwks_cache.get("keys", []) if key.get("kid") == kid),
+                None
+            )
+        except Exception as e:
+            print(f"Error refreshing JWKS from Clerk: {e}")
+            return None
+
+    return RSAAlgorithm.from_jwk(matching_key) if matching_key else None
 
 def require_auth(required_role=None):
     """
@@ -66,37 +83,30 @@ def require_auth(required_role=None):
                     return jsonify({"error": "Could not find matching verification key"}), 401
 
                 # Decode and verify token signature
-                # In Clerk, standard custom roles are stored inside publicMetadata -> public_metadata
                 payload = jwt.decode(
                     token, 
                     public_key, 
                     algorithms=["RS256"], 
-                    options={"verify_exp": True}
+                    issuer=os.getenv("CLERK_ISSUER"),
+                    options={
+                        "verify_exp": True,
+                        "verify_nbf": True,
+                        "verify_iss": True,
+                        "verify_aud": False
+                    }
                 )
 
-                # Log token payload details for diagnostics
-                print("Token Payload Keys:", payload.keys())
-                
-                # Clerk's public metadata is loaded inside the token claims
-                # It is often key-mapped as 'public_metadata' or nested under 'publicMetadata' or 'metadata'
-                public_metadata = (
-                    payload.get("public_metadata", {}) or 
-                    payload.get("publicMetadata", {}) or 
-                    payload.get("metadata", {})
-                )
-                
-                print("Extracted Public Metadata:", public_metadata)
-                
-                user_role = public_metadata.get("role", "employee")
-                
-                # Development Bypass: Force admin role for your testing user account
-                if payload.get("sub") == "user_3HdlXzuKasrniTJpJcTYHZ4wcS6":
-                    user_role = "admin"
-                    print(f"Dev Bypass: Forcing Admin role for User ID: {payload.get('sub')}")
+                # Validate Authorized Party if configured
+                authorized_party = os.getenv("CLERK_AUTHORIZED_PARTY")
+                if authorized_party and payload.get("azp") != authorized_party:
+                    return jsonify({"error": "Invalid authorized party"}), 401
 
-                print(f"User ID: {payload.get('sub')}, Final Role: {user_role}")
-                
-                request.user = {
+                # Read role claim directly (fallback to employee)
+                # User configures Clerk Custom claims to place: {"role": "{{user.public_metadata.role}}"}
+                user_role = payload.get("role") or payload.get("public_metadata", {}).get("role", "employee")
+
+                # Store auth context in Flask request context global g
+                g.user = {
                     "id": payload.get("sub"),
                     "role": user_role
                 }
@@ -106,16 +116,14 @@ def require_auth(required_role=None):
                     print(f"Auth Block: User role '{user_role}' does not match required role '{required_role}'")
                     return jsonify({"error": "Forbidden: insufficient permissions"}), 403
 
-
-
             except jwt.ExpiredSignatureError:
                 return jsonify({"error": "Token has expired"}), 401
             except jwt.InvalidTokenError as e:
                 return jsonify({"error": f"Invalid token: {str(e)}"}), 401
             except Exception as e:
-                return jsonify({"error": f"Internal authentication error: {str(e)}"}), 500
+                print(f"Authentication error: {e}")
+                return jsonify({"error": "Internal authentication error"}), 500
 
             return f(*args, **kwargs)
         return decorated
-
     return decorator

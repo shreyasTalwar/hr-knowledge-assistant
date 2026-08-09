@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request, g
 from flask_cors import CORS
 from dotenv import load_dotenv
 from auth import require_auth
@@ -11,6 +11,7 @@ from parser import extract_pdf_pages, chunk_document
 from vector_store import index_document_chunks, delete_document_vectors, query_similar_chunks
 from llm import generate_rag_answer
 import json
+
 
 
 
@@ -211,9 +212,10 @@ def query_documents():
             return jsonify({"error": "Missing 'question' parameter in request body"}), 400
             
         question = data['question']
-        user_id = request.user.get("id")
+        user_id = g.user.get("id")
         
         # 1. Save User Question to SQLite
+
         user_msg = ChatMessage(
             user_id=user_id,
             role='user',
@@ -258,7 +260,7 @@ def query_documents():
 @require_auth()
 def get_chat_history():
     try:
-        user_id = request.user.get("id")
+        user_id = g.user.get("id")
         messages = ChatMessage.query.filter_by(user_id=user_id).order_by(ChatMessage.timestamp.ascii if hasattr(ChatMessage.timestamp, "ascii") else ChatMessage.timestamp.asc()).all()
         return jsonify([msg.to_json() for msg in messages]), 200
     except Exception as e:
@@ -269,13 +271,14 @@ def get_chat_history():
 @require_auth()
 def clear_chat_history():
     try:
-        user_id = request.user.get("id")
+        user_id = g.user.get("id")
         ChatMessage.query.filter_by(user_id=user_id).delete()
         db.session.commit()
         return jsonify({"message": "Chat history cleared successfully"}), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"Failed to clear chat history: {str(e)}"}), 500
+
 
 # Secure Endpoint to serve uploaded PDF documents
 from flask import send_from_directory
