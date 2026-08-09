@@ -12,8 +12,9 @@ import torch
 print("Loading sentence-transformers model (all-MiniLM-L6-v2)...")
 # Disable torch gradients globally to save memory
 torch.set_grad_enabled(False)
-model = SentenceTransformer('all-MiniLM-L6-v2')
+model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
 model.eval() # Set model to evaluation mode
+
 # Convert model weights to half-precision (FP16) to reduce memory usage by half
 if hasattr(model, 'half'):
     try:
