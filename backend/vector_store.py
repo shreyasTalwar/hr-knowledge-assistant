@@ -5,27 +5,36 @@ from dotenv import load_dotenv
 # Ensure environment variables are loaded
 load_dotenv()
 
-# Global dimensions and models resolved dynamically on startup
-EMBEDDING_MODEL = "bge-small-en-v1.5"
-INDEX_DIMENSION = 384
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+
+pc = None
+index = None
+EMBEDDING_MODEL = None
+INDEX_DIMENSION = None
 
 if PINECONE_API_KEY and PINECONE_INDEX_NAME:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
-        index = pc.Index(PINECONE_INDEX_NAME)
-        print(f"Connected to Pinecone Index: {PINECONE_INDEX_NAME}")
         
-        # Query index description to adjust the embedding model to match the exact dimension
         desc = pc.describe_index(name=PINECONE_INDEX_NAME)
-        INDEX_DIMENSION = desc.dimension
+        INDEX_DIMENSION = int(desc.dimension)
+        
         if INDEX_DIMENSION == 1024:
             EMBEDDING_MODEL = "multilingual-e5-large"
-        else:
+        elif INDEX_DIMENSION == 384:
             EMBEDDING_MODEL = "bge-small-en-v1.5"
-            
-        print(f"Index Dimension: {INDEX_DIMENSION}, Selected Model: {EMBEDDING_MODEL}")
+        else:
+            raise RuntimeError(f"Unsupported Pinecone index dimension: {INDEX_DIMENSION}")
+
+        index = pc.Index(PINECONE_INDEX_NAME)
+        print(f"Connected to Pinecone Index: {PINECONE_INDEX_NAME}")
+        print(f"Index Dimension: {INDEX_DIMENSION}")
+        print(f"Embedding Model: {EMBEDDING_MODEL}")
     except Exception as e:
         print(f"Failed to initialize Pinecone Index connection: {e}")
+        pc = None
+        index = None
 else:
     print("Warning: PINECONE_API_KEY or PINECONE_INDEX_NAME environment variables are missing. Vector indexing will be disabled.")
 
@@ -34,8 +43,12 @@ def get_embedding(text, input_type="passage"):
     Generate vector embedding using Pinecone's Inference API.
     Handles 'passage' or 'query' format parameters.
     """
-    if not pc:
-        raise ValueError("Pinecone client is not initialized.")
+    if pc is None or EMBEDDING_MODEL is None:
+        raise RuntimeError("Pinecone embedding service is not initialized.")
+    
+    if input_type not in {"passage", "query"}:
+        raise ValueError("input_type must be either 'passage' or 'query'")
+
     
     try:
         res = pc.inference.embed(
