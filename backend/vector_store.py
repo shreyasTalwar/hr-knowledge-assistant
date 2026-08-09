@@ -8,9 +8,24 @@ load_dotenv()
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
 
+from fastembed import TextEmbedding
+from functools import lru_cache
+
+# Initialize FastEmbed ONNX model using lazy-loading singleton pattern
+@lru_cache(maxsize=1)
+def get_model():
+    print("Loading FastEmbed model (BAAI/bge-small-en-v1.5)...")
+    return TextEmbedding(
+        model_name="BAAI/bge-small-en-v1.5",
+        providers=["CPUExecutionProvider"]
+    )
+
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
+
 pc = None
 index = None
-EMBEDDING_MODEL = "bge-small-en-v1.5"
+EMBEDDING_MODEL = "bge-small-en-v1.5 (Local FastEmbed)"
 EXPECTED_DIMENSION = 384
 
 if not PINECONE_API_KEY or not PINECONE_INDEX_NAME:
@@ -41,35 +56,25 @@ else:
 
 def get_embedding(text, input_type="passage"):
     """
-    Generate vector embedding using Pinecone's Inference API.
-    Handles 'passage' or 'query' format parameters.
+    Generate vector embedding using local FastEmbed model (384 dimensions).
     """
     if pc is None:
         raise RuntimeError("Pinecone client is not initialized.")
     
-    if input_type not in {"passage", "query"}:
-        raise ValueError("input_type must be either 'passage' or 'query'")
-
-
-    
     try:
-        res = pc.inference.embed(
-            model=EMBEDDING_MODEL,
-            inputs=[text],
-            parameters={
-                "input_type": input_type,
-                "truncate": "END"
-            }
-        )
-        values = list(res[0].values)
+        model = get_model()
+        embeddings = list(model.embed([text]))
+        values = embeddings[0].tolist()
+        
         if len(values) != EXPECTED_DIMENSION:
             raise ValueError(
-                f"Embedding dimension mismatch: expected {EXPECTED_DIMENSION}, got {len(values)} using {EMBEDDING_MODEL}"
+                f"Embedding dimension mismatch: expected {EXPECTED_DIMENSION}, got {len(values)}"
             )
         return values
     except Exception as e:
-        print(f"Pinecone embedding generation failed using {EMBEDDING_MODEL}: {e}")
+        print(f"FastEmbed embedding generation failed: {e}")
         raise e
+
 
 
 
