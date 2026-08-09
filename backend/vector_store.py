@@ -1,33 +1,19 @@
 import os
 from pinecone import Pinecone
-from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
+from fastembed import TextEmbedding
 
-# Ensure environment variables are loaded from .env before evaluating properties
+# Ensure environment variables are loaded
 load_dotenv()
 
-# Initialize Sentence Transformers model
-# all-MiniLM-L6-v2 translates text to a 384-dimensional dense vector space
-import torch
-print("Loading sentence-transformers model (all-MiniLM-L6-v2)...")
-# Disable torch gradients globally to save memory
-torch.set_grad_enabled(False)
-model = SentenceTransformer('all-MiniLM-L6-v2', device='cpu')
-model.eval() # Set model to evaluation mode
-
-# Convert model weights to half-precision (FP16) to reduce memory usage by half
-if hasattr(model, 'half'):
-    try:
-        model.half()
-        print("Model converted to half-precision (FP16) successfully.")
-    except Exception as e:
-        print(f"Skipped FP16 conversion: {e}")
+# Initialize FastEmbed ONNX model (uses much less RAM than sentence-transformers/torch)
+print("Loading FastEmbed model (BAAI/bge-small-en-v1.5)...")
+model = TextEmbedding(model_name="BAAI/bge-small-en-v1.5")
 print("Model loaded successfully.")
 
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
-
 
 # Initialize Pinecone Client
 pc = None
@@ -47,7 +33,10 @@ def get_embedding(text):
     """
     Generate 384-dimensional vector embedding for a given string text.
     """
-    return model.encode(text).tolist()
+    # model.embed returns a generator of numpy arrays. We convert the first item to list.
+    embeddings = list(model.embed([text]))
+    return embeddings[0].tolist()
+
 
 def index_document_chunks(chunks):
     """
