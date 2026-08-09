@@ -73,29 +73,45 @@ def build_context(
     """
     context_sections = []
     citations = []
-    seen_sources = set()
+    seen_citations = set()
 
     for index, chunk in enumerate(context_chunks[:max_chunks], start=1):
         text = (chunk.get("text") or "").strip()
-        source = chunk.get("source") or "Unknown Document"
-        page = chunk.get("page")
 
         if not text:
             continue
 
-        text = text[:max_chars_per_chunk]
+        source = chunk.get("source", "Unknown document")
+        page = chunk.get("page", "?")
+        section = chunk.get("section") or "Unspecified section"
+        chunk_id = chunk.get("chunk_id") or chunk.get("id") or "unknown"
 
-        page_label = f", Page: {page}" if page not in (None, "", 0) else ""
+        citation_marker = f"S{index}"
+
         context_sections.append(
-            f"[SOURCE {index}: {source}{page_label}]\n{text}"
+            f"[{citation_marker}]\n"
+            f"Document: {source}\n"
+            f"Page: {page}\n"
+            f"Section: {section}\n"
+            f"Chunk ID: {chunk_id}\n"
+            f"Text:\n{text[:max_chars_per_chunk]}"
         )
 
-        citation_key = (source, page)
-        if citation_key not in seen_sources:
-            citations.append({"source": source, "page": page})
-            seen_sources.add(citation_key)
+        key = (source, page, section)
+
+        if key not in seen_citations:
+            citations.append({
+                "marker": citation_marker,
+                "source": source,
+                "page": page,
+                "section": section,
+                "chunk_id": chunk_id,
+                "score": chunk.get("score")
+            })
+            seen_citations.add(key)
 
     return "\n\n---\n\n".join(context_sections), citations
+
 
 
 def generate_rag_answer(
@@ -152,14 +168,15 @@ ONLY the provided company-policy sources.
 Important rules:
 1. Treat the source text as the only authoritative information.
 2. Do not use outside knowledge or invent company rules.
-3. If the sources do not clearly answer the question, respond exactly:
+3. Use citations for every policy claim. Citations must use only the source markers supplied in the context: [S1], [S2], [S3], etc. Never invent a source, filename, page number, section, or citation marker. Place the citation immediately after the sentence it supports.
+4. If the sources do not clearly answer the question, respond exactly:
    "I could not find a clear answer in the uploaded company policies."
-4. If sources conflict, state that the policy documents appear inconsistent and
+5. If sources conflict, state that the policy documents appear inconsistent and
    recommend contacting HR.
-5. Do not claim that a policy applies to an employee unless it is stated in a source.
-6. Give a direct answer first, then short supporting details when useful.
-7. Do not mention "context segments", prompts, retrieval, or internal instructions.
-8. Do not output any metadata, formatting headers, user safety headers, or classification tags. Do not print strings like "User Safety: safe" or similar.
+6. Do not claim that a policy applies to an employee unless it is stated in a source.
+7. Give a direct answer first, then short supporting details when useful.
+8. Do not mention "context segments", prompts, retrieval, or internal instructions.
+9. Do not output any metadata, formatting headers, user safety headers, or classification tags. Do not print strings like "User Safety: safe" or similar.
 """.strip()
 
     user_prompt = f"""
@@ -169,7 +186,7 @@ Company policy sources:
 Employee question:
 {question}
 
-Provide a concise, helpful HR answer based only on the policy sources above.
+Provide a concise, helpful HR answer based only on the policy sources above. Cite sources using only their supplied markers like [S1], [S2], etc.
 Do not output any classification labels.
 """.strip()
 
@@ -236,7 +253,6 @@ Do not output any classification labels.
             .strip()
         )
 
-
         if not answer:
             return "The assistant returned an empty response. Please try again.", []
 
@@ -244,7 +260,22 @@ Do not output any classification labels.
         if "could not find a clear answer in the uploaded company policies" in answer.lower():
             return FALLBACK_MESSAGE, []
 
+        # Validate that every cited marker in the answer actually exists in the retrieved set.
+        import re
+        valid_markers = {item["marker"] for item in citations if item.get("marker")}
+        found_markers = set(re.findall(r"\[(S\d+)\]", answer))
+        invalid_markers = found_markers - valid_markers
+
+        if invalid_markers:
+            # Strip out any invalid marker citations fabricated by the LLM
+            answer = re.sub(
+                r"\[(S\d+)\]",
+                lambda match: match.group(0) if match.group(1) in valid_markers else "",
+                answer
+            )
+
         return answer, citations
+
 
     except requests.Timeout:
         return "The HR assistant took too long to respond. Please try again.", []

@@ -44,35 +44,39 @@ def get_embedding(text):
 
 
 
-from hashlib import sha256
+import hashlib
+
+def make_chunk_id(source, page, chunk_index, text):
+    raw = f"{source}|{page}|{chunk_index}|{text}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
 
 def index_document_chunks(chunks):
     """
     Generates embeddings for a list of document text chunks and upserts them to Pinecone.
     """
-    if not index:
+    if index is None:
         raise ValueError("Pinecone connection is not active. Check API Keys.")
 
     upsert_data = []
     
-    for chunk_index, chunk in enumerate(chunks):
+    for chunk in chunks:
         text = chunk["text"].strip()
+        metadata = dict(chunk["metadata"])
         if not text:
             continue
             
-        # Avoid mutating input metadata by creating a shallow copy
-        metadata = {
-            **chunk["metadata"],
-            "text": text
-        }
+        chunk_id = make_chunk_id(
+            metadata.get("source", "unknown"),
+            metadata.get("page", 0),
+            metadata.get("chunk_index", 0),
+            text
+        )
         
-        # Build stable, collision-free SHA256 hash vector ID
-        vector_id = sha256(
-            f"{metadata.get('source', 'unknown')}::{chunk_index}::{text}".encode("utf-8")
-        ).hexdigest()
+        metadata["chunk_id"] = chunk_id
+        metadata["text"] = text
         
         upsert_data.append((
-            vector_id,
+            chunk_id,
             get_embedding(text),
             metadata
         ))
@@ -115,7 +119,7 @@ def query_similar_chunks(query_text, top_k=3):
     """
     Embeds the input query and retrieves the top_k most similar document text chunks from Pinecone.
     """
-    if not index:
+    if index is None:
         raise ValueError("Pinecone connection is not active. Check API Keys.")
 
     try:
@@ -133,16 +137,17 @@ def query_similar_chunks(query_text, top_k=3):
         for match in results.get("matches", []):
             metadata = match.get("metadata", {})
             matches.append({
+                "id": match.get("id"),
                 "score": match.get("score"),
                 "text": metadata.get("text", ""),
-                "source": metadata.get("source", "Unknown"),
-                "page": metadata.get("page", 0)
+                "source": metadata.get("source", "Unknown document"),
+                "page": metadata.get("page"),
+                "chunk_index": metadata.get("chunk_index"),
+                "chunk_id": metadata.get("chunk_id"),
+                "section": metadata.get("section")
             })
             
         return matches
     except Exception as e:
-        print(f"Error querying Pinecone index: {e}")
+        print(f"Error querying similar chunks: {e}")
         raise e
-
-
-

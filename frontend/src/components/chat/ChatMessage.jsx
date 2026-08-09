@@ -41,7 +41,8 @@ function getUniqueCitations(source) {
   return citations.filter((citation) => {
     const filename = citation.source || citation.document || "Unknown document"
     const page = citation.page || 1
-    const key = `${filename}-${page}`
+    const marker = citation.marker || ""
+    const key = `${filename}-${page}-${marker}`
 
     if (seen.has(key)) return false
 
@@ -179,6 +180,7 @@ function ChatMessage({ role, content, source }) {
                   const filename =
                     citation.source || citation.document || "Company policy"
                   const page = citation.page || 1
+                  const marker = citation.marker ? `[${citation.marker}] ` : ""
 
                   return (
                     <button
@@ -191,7 +193,7 @@ function ChatMessage({ role, content, source }) {
                       <FileText className="size-3.5 shrink-0 text-primary" />
 
                       <span className="max-w-64 truncate font-medium text-foreground">
-                        {filename}
+                        {marker}{filename}
                       </span>
 
 
@@ -206,6 +208,7 @@ function ChatMessage({ role, content, source }) {
               </div>
             </div>
           )}
+
         </div>
       </MessageContent>
     </Message>
