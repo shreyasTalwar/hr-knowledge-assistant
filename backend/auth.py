@@ -10,6 +10,12 @@ CLERK_JWKS_URL = os.getenv("CLERK_JWKS_URL")
 # Cache public keys to prevent hitting Clerk servers on every single API call
 jwks_cache = None
 
+# Role hierarchy levels (higher is more privileged)
+ROLE_LEVELS = {
+    "employee": 1,
+    "admin": 2
+}
+
 def fetch_jwks():
     if not CLERK_JWKS_URL:
         raise ValueError("CLERK_JWKS_URL environment variable is missing")
@@ -57,17 +63,13 @@ def require_auth(required_role=None):
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
-            auth_header = request.headers.get("Authorization", None)
-            if not auth_header:
-                return jsonify({"error": "Authorization header is missing"}), 401
-            
+            auth_header = request.headers.get("Authorization", "")
             parts = auth_header.split()
-            if parts[0].lower() != "bearer":
-                return jsonify({"error": "Authorization header must start with Bearer"}), 401
-            elif len(parts) == 1:
-                return jsonify({"error": "Token not found"}), 401
-            elif len(parts) > 2:
-                return jsonify({"error": "Authorization header must be Bearer token"}), 401
+
+            if len(parts) != 2 or parts[0].lower() != "bearer":
+                return jsonify({
+                    "error": "Authorization header must be: Bearer <token>"
+                }), 401
 
             token = parts[1]
 
@@ -82,13 +84,18 @@ def require_auth(required_role=None):
                 if not public_key:
                     return jsonify({"error": "Could not find matching verification key"}), 401
 
+                clerk_issuer = os.getenv("CLERK_ISSUER")
+                if not clerk_issuer:
+                    raise RuntimeError("CLERK_ISSUER environment variable is missing")
+
                 # Decode and verify token signature
                 payload = jwt.decode(
                     token, 
                     public_key, 
                     algorithms=["RS256"], 
-                    issuer=os.getenv("CLERK_ISSUER"),
+                    issuer=clerk_issuer,
                     options={
+                        "require": ["exp", "iss", "sub"],
                         "verify_exp": True,
                         "verify_nbf": True,
                         "verify_iss": True,
@@ -96,9 +103,14 @@ def require_auth(required_role=None):
                     }
                 )
 
-                # Validate Authorized Party if configured
-                authorized_party = os.getenv("CLERK_AUTHORIZED_PARTY")
-                if authorized_party and payload.get("azp") != authorized_party:
+                # Validate Authorized Parties if configured (comma-separated list support)
+                authorized_parties = {
+                    origin.strip()
+                    for origin in os.getenv("CLERK_AUTHORIZED_PARTIES", "").split(",")
+                    if origin.strip()
+                }
+                token_azp = payload.get("azp")
+                if authorized_parties and token_azp and token_azp not in authorized_parties:
                     return jsonify({"error": "Invalid authorized party"}), 401
 
                 # Read role claim directly (fallback to employee)
@@ -111,10 +123,13 @@ def require_auth(required_role=None):
                     "role": user_role
                 }
 
-                # Enforce required role permission levels
-                if required_role and user_role != required_role:
-                    print(f"Auth Block: User role '{user_role}' does not match required role '{required_role}'")
-                    return jsonify({"error": "Forbidden: insufficient permissions"}), 403
+                # Enforce required role hierarchy permissions
+                if required_role:
+                    current_level = ROLE_LEVELS.get(user_role, 0)
+                    required_level = ROLE_LEVELS.get(required_role, 999)
+                    if current_level < required_level:
+                        print(f"Auth Block: User role '{user_role}' has insufficient permissions for '{required_role}'")
+                        return jsonify({"error": "Forbidden: insufficient permissions"}), 403
 
             except jwt.ExpiredSignatureError:
                 return jsonify({"error": "Token has expired"}), 401
