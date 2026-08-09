@@ -54,30 +54,42 @@ def allowed_file(filename):
 def process_pdf_in_background(app_context, doc_id, file_path, filename):
     with app_context:
         try:
+            print(f"Background worker: Starting PDF parsing for {filename} (ID: {doc_id})...")
             # 1. Extract text page-by-page
             pages_data = extract_pdf_pages(file_path)
+            print(f"Background worker: Extracted {len(pages_data)} pages.")
 
             # 2. Split text into chunks
             chunks = chunk_document(filename, pages_data)
+            print(f"Background worker: Split into {len(chunks)} chunks.")
 
             # 3. Generate embeddings and index them inside Pinecone
             print(f"Generating embeddings and indexing {len(chunks)} chunks in Pinecone...")
             index_document_chunks(chunks)
+            print("Background worker: Pinecone indexing complete.")
 
             # Update document status to Indexed and save total page count
             doc = Document.query.get(doc_id)
             if doc:
+                print(f"Background worker: Updating DB document {doc_id} to status 'indexed'...")
                 doc.status = 'indexed'
                 doc.pages = len(pages_data)
                 db.session.commit()
-
+                print("Background worker: DB status update committed successfully.")
+            else:
+                print(f"Background worker Error: Document ID {doc_id} not found in DB!")
 
         except Exception as e:
             print(f"Error processing PDF {filename} in background: {e}")
-            doc = Document.query.get(doc_id)
-            if doc:
-                doc.status = 'failed'
-                db.session.commit()
+            try:
+                doc = Document.query.get(doc_id)
+                if doc:
+                    doc.status = 'failed'
+                    db.session.commit()
+                    print("Background worker: Marked document status as 'failed'.")
+            except Exception as db_err:
+                print(f"Background worker Error: Failed to mark document as failed: {db_err}")
+
 
 # Configure CORS to accept requests from our frontend ports
 CORS_ORIGINS = [
