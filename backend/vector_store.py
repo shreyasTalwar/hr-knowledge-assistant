@@ -5,50 +5,56 @@ from dotenv import load_dotenv
 # Ensure environment variables are loaded
 load_dotenv()
 
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
-
-# Initialize Pinecone Client
-pc = None
-index = None
+# Global dimensions and models resolved dynamically on startup
+EMBEDDING_MODEL = "bge-small-en-v1.5"
+INDEX_DIMENSION = 384
 
 if PINECONE_API_KEY and PINECONE_INDEX_NAME:
     try:
         pc = Pinecone(api_key=PINECONE_API_KEY)
         index = pc.Index(PINECONE_INDEX_NAME)
         print(f"Connected to Pinecone Index: {PINECONE_INDEX_NAME}")
+        
+        # Query index description to adjust the embedding model to match the exact dimension
+        desc = pc.describe_index(name=PINECONE_INDEX_NAME)
+        INDEX_DIMENSION = desc.dimension
+        if INDEX_DIMENSION == 1024:
+            EMBEDDING_MODEL = "multilingual-e5-large"
+        else:
+            EMBEDDING_MODEL = "bge-small-en-v1.5"
+            
+        print(f"Index Dimension: {INDEX_DIMENSION}, Selected Model: {EMBEDDING_MODEL}")
     except Exception as e:
         print(f"Failed to initialize Pinecone Index connection: {e}")
 else:
     print("Warning: PINECONE_API_KEY or PINECONE_INDEX_NAME environment variables are missing. Vector indexing will be disabled.")
 
-def get_embedding(text):
+def get_embedding(text, input_type="passage"):
     """
-    Generate 384-dimensional vector embedding for a given string text using Pinecone's Inference API.
+    Generate vector embedding using Pinecone's Inference API.
+    Handles 'passage' or 'query' format parameters.
     """
     if not pc:
         raise ValueError("Pinecone client is not initialized.")
     
-    # We use the standard, lightweight multiligual-e5-large model supported by Pinecone Inference
-    # or you can use "bge-small-en-v1.5" or similar if supported.
-    # Note: BAAI/bge-small-en-v1.5 generates 384-dim, e5 is 1024-dim, but pinecone's bge-small-en-v1.5 works directly:
     try:
         res = pc.inference.embed(
-            model="bge-small-en-v1.5",
+            model=EMBEDDING_MODEL,
             inputs=[text],
-            parameters={"input_type": "passage"}
+            parameters={
+                "input_type": input_type,
+                "truncate": "END"
+            }
         )
-        return res[0].values
+        values = list(res[0].values)
+        if len(values) != INDEX_DIMENSION:
+            raise ValueError(
+                f"Embedding dimension mismatch: expected {INDEX_DIMENSION}, got {len(values)} using {EMBEDDING_MODEL}"
+            )
+        return values
     except Exception as e:
-        # Fallback to general model if bge small isn't active on custom regions
-        res = pc.inference.embed(
-            model="multilingual-e5-large",
-            inputs=[text],
-            parameters={"input_type": "passage"}
-        )
-        return res[0].values
-
-
+        print(f"Pinecone embedding generation failed using {EMBEDDING_MODEL}: {e}")
+        raise e
 
 
 import hashlib
@@ -84,7 +90,7 @@ def index_document_chunks(chunks):
         
         upsert_data.append((
             chunk_id,
-            get_embedding(text),
+            get_embedding(text, "passage"),
             metadata
         ))
 
@@ -131,7 +137,7 @@ def query_similar_chunks(query_text, top_k=3):
 
     try:
         # Generate embedding vector for the question query
-        query_vector = get_embedding(query_text)
+        query_vector = get_embedding(query_text, "query")
         
         # Query Pinecone index
         results = index.query(
@@ -158,3 +164,4 @@ def query_similar_chunks(query_text, top_k=3):
     except Exception as e:
         print(f"Error querying similar chunks: {e}")
         raise e
+
