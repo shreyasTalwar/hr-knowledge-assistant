@@ -1,0 +1,39 @@
+# Frontend Node dependencies & logs
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/*.local
+frontend/logs
+frontend/*.log
+frontend/npm-debug.log*
+
+# Python Backend cached files
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/venv/
+backend/.venv/
+backend/env/
+
+# SQLite databases
+backend/instance/
+backend/*.db
+backend/*.sqlite3
+
+# PDF uploaded files catalog
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Environment configuration secrets
+.env
+.env*.local
+backend/.env
+frontend/.env
+frontend/.env*.local
+
+# System and IDE configuration
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
