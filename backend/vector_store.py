@@ -44,6 +44,8 @@ def get_embedding(text):
 
 
 
+from hashlib import sha256
+
 def index_document_chunks(chunks):
     """
     Generates embeddings for a list of document text chunks and upserts them to Pinecone.
@@ -53,24 +55,30 @@ def index_document_chunks(chunks):
 
     upsert_data = []
     
-    for idx, chunk in enumerate(chunks):
-        text = chunk["text"]
-        meta = chunk["metadata"]
+    for chunk_index, chunk in enumerate(chunks):
+        text = chunk["text"].strip()
+        if not text:
+            continue
+            
+        # Avoid mutating input metadata by creating a shallow copy
+        metadata = {
+            **chunk["metadata"],
+            "text": text
+        }
         
-        # Generate embedding vector
-        vector = get_embedding(text)
-        
-        # Merge text content directly into metadata payload for grounding during searches
-        meta["text"] = text
-        
-        # Unique vector identifier
-        vector_id = f"{meta['source']}_chunk_{idx}"
+        # Build stable, collision-free SHA256 hash vector ID
+        vector_id = sha256(
+            f"{metadata.get('source', 'unknown')}::{chunk_index}::{text}".encode("utf-8")
+        ).hexdigest()
         
         upsert_data.append((
             vector_id,
-            vector,
-            meta
+            get_embedding(text),
+            metadata
         ))
+
+    if not upsert_data:
+        return
 
     # Batch upsert to Pinecone
     try:
@@ -80,6 +88,7 @@ def index_document_chunks(chunks):
     except Exception as e:
         print(f"Error upserting vectors to Pinecone: {e}")
         raise e
+
 
 def delete_document_vectors(filename):
     """
