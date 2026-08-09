@@ -192,18 +192,25 @@ function AdminDashboard() {
   }, [documents, fetchDocuments])
 
   const validateAndUpload = (file) => {
-    if (!file) return
+    console.log("validateAndUpload triggered with file:", file);
+    if (!file) {
+      console.log("Upload aborted: file is empty/undefined");
+      return;
+    }
 
     if (file.type !== "application/pdf") {
-      setError("Only PDF files can be uploaded to the policy knowledge base.")
-      return
+      console.log("Upload aborted: invalid file type:", file.type);
+      setError("Only PDF files can be uploaded to the policy knowledge base.");
+      return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      setError("This file is too large. Please upload a PDF smaller than 10 MB.")
-      return
+      console.log("Upload aborted: file exceeds size limit:", file.size);
+      setError("This file is too large. Please upload a PDF smaller than 10 MB.");
+      return;
     }
 
+    console.log("File validated successfully, calling uploadFile...");
     uploadFile(file)
   }
 
@@ -225,11 +232,13 @@ function AdminDashboard() {
     setIsDragging(false)
 
     const file = event.dataTransfer.files?.[0]
+    console.log("File dropped:", file);
     validateAndUpload(file)
   }
 
   const handleFileChange = (event) => {
     const file = event.target.files?.[0]
+    console.log("File selected via input:", file);
     validateAndUpload(file)
 
     // Allows selecting the same file again after a failed upload.
@@ -237,6 +246,7 @@ function AdminDashboard() {
   }
 
   const uploadFile = async (file) => {
+    console.log("uploadFile sequence started for:", file.name);
     setError(null)
     setUploadingFileName(file.name)
     setUploadProgress(10)
@@ -245,6 +255,8 @@ function AdminDashboard() {
 
     try {
       const token = await getToken()
+      console.log("Retrieved auth token successfully. Exists:", !!token);
+
 
       if (!token) {
         throw new Error("Your session token is unavailable. Please sign in again.")
