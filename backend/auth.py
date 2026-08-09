@@ -63,8 +63,12 @@ def require_auth(required_role=None):
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
+            if request.method == "OPTIONS":
+                return "", 204
+
             auth_header = request.headers.get("Authorization", "")
             parts = auth_header.split()
+
 
             if len(parts) != 2 or parts[0].lower() != "bearer":
                 return jsonify({

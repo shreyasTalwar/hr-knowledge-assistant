@@ -80,8 +80,21 @@ def process_pdf_in_background(app_context, doc_id, file_path, filename):
                 db.session.commit()
 
 # Configure CORS to accept requests from our frontend ports
-CORS_ORIGINS = ["http://localhost:5173", "http://localhost:5174", "https://hr-knowledge-assistant-zeta.vercel.app"]
-CORS(app, resources={r"/api/*": {"origins": CORS_ORIGINS}})
+CORS_ORIGINS = [
+    "http://localhost:5173", 
+    "http://localhost:5174", 
+    "https://hrr-knowledge-assistant.vercel.app",
+    "https://hr-knowledge-assistant-zeta.vercel.app"
+]
+CORS(
+    app,
+    resources={r"/api/*": {"origins": CORS_ORIGINS}},
+    methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+    expose_headers=["Content-Type"],
+    supports_credentials=False
+)
+
 
 
 @app.route('/api/health', methods=['GET'])
