@@ -43,7 +43,10 @@ import { cn } from "@/lib/utils"
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api"
 
+console.log("API_BASE_URL Resolved Value:", API_BASE_URL);
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024
+
 
 function formatDate(dateValue) {
   if (!dateValue) return "—"
@@ -191,15 +194,19 @@ function AdminDashboard() {
     return () => clearInterval(interval)
   }, [documents, fetchDocuments])
 
-  const validateAndUpload = (file) => {
+  const validateAndUpload = async (file) => {
     console.log("validateAndUpload triggered with file:", file);
     if (!file) {
       console.log("Upload aborted: file is empty/undefined");
       return;
     }
 
-    if (file.type !== "application/pdf") {
-      console.log("Upload aborted: invalid file type:", file.type);
+    const isPdf =
+      file.type === "application/pdf" ||
+      file.name.toLowerCase().endsWith(".pdf");
+
+    if (!isPdf) {
+      console.log("Upload aborted: invalid file type:", file.type, "filename:", file.name);
       setError("Only PDF files can be uploaded to the policy knowledge base.");
       return;
     }
@@ -211,7 +218,7 @@ function AdminDashboard() {
     }
 
     console.log("File validated successfully, calling uploadFile...");
-    uploadFile(file)
+    await uploadFile(file)
   }
 
   const handleDragOver = (event) => {
@@ -238,12 +245,22 @@ function AdminDashboard() {
 
   const handleFileChange = (event) => {
     const file = event.target.files?.[0]
-    console.log("File selected via input:", file);
-    validateAndUpload(file)
+    console.log("File input change fired:", {
+      name: file?.name,
+      type: file?.type,
+      size: file?.size,
+    });
+    
+    if (file) {
+      validateAndUpload(file)
+    } else {
+      console.log("No file selected");
+    }
 
     // Allows selecting the same file again after a failed upload.
     event.target.value = ""
   }
+
 
   const uploadFile = async (file) => {
     console.log("uploadFile sequence started for:", file.name);
@@ -485,7 +502,6 @@ function AdminDashboard() {
               <div
                 role="button"
                 tabIndex={0}
-                onClick={() => fileInputRef.current?.click()}
                 onDragOver={handleDragOver}
                 onDragLeave={handleDragLeave}
                 onDrop={handleDrop}
@@ -496,7 +512,7 @@ function AdminDashboard() {
                   }
                 }}
                 className={cn(
-                  "flex min-h-60 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition",
+                  "flex min-h-60 flex-col items-center justify-center rounded-xl border-2 border-dashed px-6 py-8 text-center transition",
                   isDragging
                     ? "border-primary bg-primary/5"
                     : "border-muted-foreground/20 hover:border-primary/50 hover:bg-muted/30",
@@ -505,10 +521,10 @@ function AdminDashboard() {
               >
                 <input
                   ref={fileInputRef}
+                  id="policy-file"
                   type="file"
                   accept=".pdf,application/pdf"
-                  className="hidden"
-                  onClick={(event) => event.stopPropagation()}
+                  className="sr-only"
                   onChange={handleFileChange}
                 />
 
@@ -526,25 +542,21 @@ function AdminDashboard() {
                 </h3>
 
                 <p className="mt-2 max-w-xs text-xs leading-5 text-muted-foreground">
-                  Drag and drop a PDF, or click here to browse your device.
+                  Drag and drop a PDF, or click the button below to browse your device.
                 </p>
+
+                <label
+                  htmlFor="policy-file"
+                  className="mt-4 inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-accent hover:text-accent-foreground"
+                >
+                  Choose PDF
+                </label>
 
                 <Badge variant="secondary" className="mt-4 text-[10px]">
                   PDF only · Maximum 10 MB
                 </Badge>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="mt-4 z-10"
-                  onClick={(event) => {
-                    event.stopPropagation()
-                    fileInputRef.current?.click()
-                  }}
-                >
-                  Choose PDF
-                </Button>
               </div>
+
 
 
               {uploadProgress !== null && (
