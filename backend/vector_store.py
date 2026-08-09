@@ -8,9 +8,21 @@ load_dotenv()
 
 # Initialize Sentence Transformers model
 # all-MiniLM-L6-v2 translates text to a 384-dimensional dense vector space
+import torch
 print("Loading sentence-transformers model (all-MiniLM-L6-v2)...")
+# Disable torch gradients globally to save memory
+torch.set_grad_enabled(False)
 model = SentenceTransformer('all-MiniLM-L6-v2')
+model.eval() # Set model to evaluation mode
+# Convert model weights to half-precision (FP16) to reduce memory usage by half
+if hasattr(model, 'half'):
+    try:
+        model.half()
+        print("Model converted to half-precision (FP16) successfully.")
+    except Exception as e:
+        print(f"Skipped FP16 conversion: {e}")
 print("Model loaded successfully.")
+
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
