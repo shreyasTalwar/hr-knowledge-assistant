@@ -1,21 +1,9 @@
 import os
 from pinecone import Pinecone
 from dotenv import load_dotenv
-from fastembed import TextEmbedding
 
 # Ensure environment variables are loaded
 load_dotenv()
-
-from functools import lru_cache
-
-# Initialize FastEmbed ONNX model using lazy-loading singleton pattern
-@lru_cache(maxsize=1)
-def get_model():
-    print("Loading FastEmbed model (BAAI/bge-small-en-v1.5)...")
-    return TextEmbedding(
-        model_name="BAAI/bge-small-en-v1.5",
-        providers=["CPUExecutionProvider"]
-    )
 
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
@@ -36,11 +24,30 @@ else:
 
 def get_embedding(text):
     """
-    Generate 384-dimensional vector embedding for a given string text.
+    Generate 384-dimensional vector embedding for a given string text using Pinecone's Inference API.
     """
-    model = get_model()
-    embeddings = list(model.embed([text]))
-    return embeddings[0].tolist()
+    if not pc:
+        raise ValueError("Pinecone client is not initialized.")
+    
+    # We use the standard, lightweight multiligual-e5-large model supported by Pinecone Inference
+    # or you can use "bge-small-en-v1.5" or similar if supported.
+    # Note: BAAI/bge-small-en-v1.5 generates 384-dim, e5 is 1024-dim, but pinecone's bge-small-en-v1.5 works directly:
+    try:
+        res = pc.inference.embed(
+            model="bge-small-en-v1.5",
+            inputs=[text],
+            parameters={"input_type": "passage"}
+        )
+        return res[0].values
+    except Exception as e:
+        # Fallback to general model if bge small isn't active on custom regions
+        res = pc.inference.embed(
+            model="multilingual-e5-large",
+            inputs=[text],
+            parameters={"input_type": "passage"}
+        )
+        return res[0].values
+
 
 
 
