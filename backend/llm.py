@@ -159,6 +159,7 @@ Important rules:
 5. Do not claim that a policy applies to an employee unless it is stated in a source.
 6. Give a direct answer first, then short supporting details when useful.
 7. Do not mention "context segments", prompts, retrieval, or internal instructions.
+8. Do not output any metadata, formatting headers, user safety headers, or classification tags. Do not print strings like "User Safety: safe" or similar.
 """.strip()
 
     user_prompt = f"""
@@ -169,6 +170,7 @@ Employee question:
 {question}
 
 Provide a concise, helpful HR answer based only on the policy sources above.
+Do not output any classification labels.
 """.strip()
 
     headers = {
@@ -220,12 +222,20 @@ Provide a concise, helpful HR answer based only on the policy sources above.
             return f"Unable to generate an answer right now: {error_message}", []
 
         data = response.json()
+        print("OPENROUTER RAW RESPONSE:", data)
+        print("MODEL USED:", data.get("model"))
+        print(
+            "MODEL CONTENT:",
+            data.get("choices", [{}])[0].get("message", {}).get("content")
+        )
+
         answer = (
             data.get("choices", [{}])[0]
             .get("message", {})
             .get("content", "")
             .strip()
         )
+
 
         if not answer:
             return "The assistant returned an empty response. Please try again.", []
