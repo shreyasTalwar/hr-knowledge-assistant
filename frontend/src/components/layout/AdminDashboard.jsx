@@ -521,10 +521,10 @@ function AdminDashboard() {
               >
                 <input
                   ref={fileInputRef}
-                  id="policy-file"
                   type="file"
                   accept=".pdf,application/pdf"
-                  className="sr-only"
+                  className="hidden"
+                  onClick={(event) => event.stopPropagation()}
                   onChange={handleFileChange}
                 />
 
@@ -545,12 +545,18 @@ function AdminDashboard() {
                   Drag and drop a PDF, or click the button below to browse your device.
                 </p>
 
-                <label
-                  htmlFor="policy-file"
-                  className="mt-4 inline-flex h-9 cursor-pointer items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium shadow-sm transition hover:bg-accent hover:text-accent-foreground"
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-4 z-10"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
                 >
                   Choose PDF
-                </label>
+                </Button>
+
 
                 <Badge variant="secondary" className="mt-4 text-[10px]">
                   PDF only · Maximum 10 MB
